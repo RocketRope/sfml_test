@@ -10,12 +10,21 @@ class Game : private sf::RenderWindow
 {
     private:
 
-        int rows    = 10;
-        int columns = 10;
+        int rows    = 16;
+        int columns =  9;
 
-        sf::RectangleShape block;
+        sf::RectangleShape backgroud;
+        sf::RectangleShape grid;
+        
+        sf::Font font;
+        sf::Text hold;
+        sf::Text next;
 
-        std::vector<sf::RectangleShape*> blocks;
+        sf::CircleShape block;
+        sf::CircleShape hold_block;
+        sf::CircleShape next_block;
+
+        std::vector<sf::CircleShape*> blocks;
 
         const sf::Color colors[8] = 
         {
@@ -34,16 +43,66 @@ class Game : private sf::RenderWindow
 
         Game(int width, int height)
         {
-            create(sf::VideoMode(width, height), "Block");
+            // Window / RenderTarget
+            sf::ContextSettings settings;
+            settings.antialiasingLevel = 8;
+            create( sf::VideoMode(width, height),
+                    "Block", 
+                    sf::Style::Default, 
+                    settings 
+                  );
 
+            setVerticalSyncEnabled(true);
+
+            // Set Icon
             sf::Image icon;
             icon.loadFromFile("icon.png");
             setIcon( icon.getSize().x, 
                      icon.getSize().y,
                      icon.getPixelsPtr() 
-                    );
+                    );            
 
-            setVerticalSyncEnabled(true);
+            // Load Font
+            if ( !font.loadFromFile("Robotica.ttf") )
+            {
+                std::cout << "Error font!!!" << std::endl;
+            }
+
+            // Hold
+            hold.setFont(font);
+            hold.setString("HOLD");
+            hold.setFillColor(sf::Color(0xBBBBBBFF));
+            hold.setCharacterSize(100);
+            hold.setScale(0.01f, 0.01f);
+            auto bound = hold.getLocalBounds();
+            hold.setOrigin(bound.width, 0);
+            hold.setPosition(columns * (-0.1f), 0.0f);
+
+            bound = hold.getGlobalBounds();
+
+            hold_block.setFillColor( getRandomColor() );
+            hold_block.setRadius( bound.height * 3.0f / 2.0f );
+            hold_block.setPosition( bound.left * 0.85f, bound.height * 2.0f );
+
+            // Next
+            next.setFont(font);
+            next.setString("NEXT");
+            next.setFillColor(sf::Color(0xBBBBBBFF));
+            next.setCharacterSize(100);
+            next.setScale(0.01f, 0.01f);
+            next.setPosition(columns * 1.1f, 0.0f);
+
+            bound = next.getGlobalBounds();
+
+            next_block.setFillColor( getRandomColor() );
+            next_block.setRadius( bound.height * 3.0f / 2.0f );
+            next_block.setPosition( bound.left * 1.05f , bound.height * 2.0f );
+
+            // Grid
+            grid.setSize( sf::Vector2f(columns, rows) );
+            grid.setFillColor(sf::Color(0x00000000));
+            grid.setOutlineColor(sf::Color(0x282C34FF));
+            grid.setOutlineThickness(0.2f);
 
             blocks.resize(rows * columns, nullptr);
 
@@ -65,8 +124,27 @@ class Game : private sf::RenderWindow
         {
             std::cout << getSize().x << " : " << getSize().y << std::endl;
 
-            setView( sf::View( sf::Vector2f(rows / 2, columns / 2),
-                               sf::Vector2f(rows, columns) 
+            float margin_x = 2.0f;
+            float margin_y = 1.1f;
+
+            float grid_ratio   = (columns * margin_x ) / ( rows * margin_y ) ;
+
+            sf::Vector2f view_size;
+            float screen_ratio = (float) getSize().x / (float) getSize().y;
+
+            if ( screen_ratio > grid_ratio )
+            {
+                view_size.x = rows * screen_ratio * margin_y;
+                view_size.y = rows * margin_y;
+            }
+            else
+            {
+                view_size.x = columns * margin_x;
+                view_size.y = columns / screen_ratio * margin_x;
+            }
+
+            setView( sf::View( sf::Vector2f(columns / 2.0f, rows / 2.0f),
+                               view_size
                              ) 
                     );
         }
@@ -81,13 +159,20 @@ class Game : private sf::RenderWindow
                 {
                     if ( event.type == sf::Event::Closed )
                         close();
-
+                    
                     if ( event.type == sf::Event::KeyPressed )
                     {
                         auto key = event.key.code;
 
                         if ( key == sf::Keyboard::Key::Escape )
                             close();
+
+                        if ( key == sf::Keyboard::Key::Space )
+                        {
+                            sf::Color temp = hold_block.getFillColor();
+                            hold_block.setFillColor( block.getFillColor() );
+                            block.setFillColor( temp );
+                        }
 
                         auto old_pos = block.getPosition();
     
@@ -112,21 +197,25 @@ class Game : private sf::RenderWindow
                         else if (  pos.x == 0 || pos.x == columns - 1 ) 
                             createNewBlock();
 
-                        
-                            
-
                     }
+                    
                 }
 
-                clear( sf::Color(33 , 37 , 43) );
-                
-                draw(block);
+                clear( sf::Color(0x21252BFF) );
 
+                draw(grid);
+                draw(block);
+                draw(hold);
+                draw(hold_block);
+                draw(next);
+                draw(next_block);
+    
                 for( auto b : blocks )
                 {
                     if( b != nullptr )
                         draw(*b);
                 }
+    
                 display();
             }
         }
@@ -139,17 +228,23 @@ class Game : private sf::RenderWindow
             int index = (position.y * columns) + position.x; 
 
             if ( blocks[index] == nullptr )
-                blocks[index] = new sf::RectangleShape(block); 
+                blocks[index] = new sf::CircleShape(block); 
 
-            block.setSize( sf::Vector2f(1,1) );
+            block.setRadius( 0.5f );
 
             do
             {
                 block.setPosition( Random<int>(1, columns - 1) , Random<int>(1, rows - 1) );
             } while( collision() );
 
+            block.setFillColor( next_block.getFillColor() );
+            next_block.setFillColor( getRandomColor() );
+        }
+
+        sf::Color getRandomColor()
+        {
             int c = Random<int>(0, sizeof(colors) / sizeof(sf::Color));
-            block.setFillColor( colors[c] );
+            return colors[c];
         }
 
         bool collision()
@@ -171,7 +266,6 @@ int main()
 {
 
     Game game(800, 600);
-    //game.setVerticalSyncEnabled(true);
     game.run();
 
     return 0;
